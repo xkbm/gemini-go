@@ -1,0 +1,8 @@
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.gemini.go.data.model.** { *; }
+-keep class com.google.gson.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *

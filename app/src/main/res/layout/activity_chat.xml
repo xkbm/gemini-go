@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="@android:color/transparent" app:elevation="0dp">
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="?attr/actionBarSize"
+            app:layout_scrollFlags="scroll|enterAlways" app:menu="@menu/chat_menu"
+            app:navigationIcon="@drawable/ic_menu" app:navigationIconTint="@android:color/white"
+            app:title="@string/app_name" app:titleCentered="false" app:titleTextColor="@android:color/white" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/messagesRecyclerView" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:clipToPadding="false" android:paddingTop="8dp" android:paddingBottom="16dp"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" tools:listitem="@layout/item_message_user" />
+
+    <LinearLayout android:id="@+id/welcomeLayout"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="center" android:orientation="vertical"
+        android:padding="24dp" android:visibility="gone" tools:visibility="visible">
+        <ImageView android:layout_width="96dp" android:layout_height="96dp"
+            android:layout_gravity="center" android:layout_marginBottom="24dp"
+            android:src="@drawable/ic_gemini_logo" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:gravity="center" android:text="@string/welcome_title"
+            android:textAppearance="@style/TextAppearance.WelcomeTitle" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:gravity="center" android:text="@string/welcome_subtitle"
+            android:textAppearance="@style/TextAppearance.WelcomeSubtitle" />
+        <com.google.android.material.chip.ChipGroup
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="32dp" app:chipSpacingHorizontal="8dp" app:chipSpacingVertical="4dp" app:singleLine="false">
+            <com.google.android.material.chip.Chip android:id="@+id/chipPrompt1"
+                style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_margin="4dp" android:text="@string/prompt_example_1" app:chipCornerRadius="16dp" />
+            <com.google.android.material.chip.Chip android:id="@+id/chipPrompt2"
+                style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_margin="4dp" android:text="@string/prompt_example_2" app:chipCornerRadius="16dp" />
+            <com.google.android.material.chip.Chip android:id="@+id/chipPrompt3"
+                style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_margin="4dp" android:text="@string/prompt_example_3" app:chipCornerRadius="16dp" />
+            <com.google.android.material.chip.Chip android:id="@+id/chipPrompt4"
+                style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_margin="4dp" android:text="@string/prompt_example_4" app:chipCornerRadius="16dp" />
+        </com.google.android.material.chip.ChipGroup>
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/inputBar"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom" android:background="@drawable/bg_input_bar"
+        android:elevation="0dp" android:orientation="vertical">
+        <HorizontalScrollView android:id="@+id/attachmentScroll"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="8dp"
+            android:scrollbars="none" android:visibility="gone" tools:visibility="visible">
+            <LinearLayout android:id="@+id/attachmentContainer"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+        </HorizontalScrollView>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="8dp" android:paddingBottom="8dp">
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnAttach"
+                style="@style/Widget.Material3.Button.IconButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical" android:contentDescription="@string/action_attach"
+                app:icon="@drawable/ic_attach" app:iconTint="@android:color/white" />
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/editMessage"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical"
+                android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_input_field" android:hint="@string/hint_message"
+                android:inputType="textMultiLine|textCapSentences" android:maxLines="5" android:minHeight="48dp"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:textColor="@android:color/white" android:textColorHint="#808080" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnSend"
+                android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="bottom"
+                android:background="@drawable/bg_send_button" android:contentDescription="@string/action_send"
+                app:backgroundTint="@null" app:icon="@drawable/ic_send" app:iconGravity="textStart" app:iconPadding="0dp"
+                app:iconTint="@android:color/white" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

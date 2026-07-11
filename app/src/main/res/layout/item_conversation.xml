@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground" android:orientation="horizontal"
+    android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="16dp" android:paddingBottom="16dp">
+    <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_gemini_logo" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical" android:layout_marginStart="16dp" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/textTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:ellipsize="end" android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall" android:textColor="@android:color/white"
+            tools:text="Mi primera conversación" />
+        <TextView android:id="@+id/textDate" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="#B0B0B0" tools:text="Hace 5 minutos" />
+    </LinearLayout>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnDelete"
+        style="@style/Widget.Material3.Button.IconButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical" android:contentDescription="@string/action_delete"
+        app:icon="@drawable/ic_delete" app:iconTint="@android:color/white" />
+</LinearLayout>
