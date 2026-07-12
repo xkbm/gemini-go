@@ -95,9 +95,8 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
      */
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            var lastError = "Error desconocido"
-
-            // --- Ruta 1: endpoint OpenAI-compatible (gemini-2.5-flash-image) ---
+            // Endpoint OpenAI-compatible (unico que soporta gemini-2.5-flash-image en v1beta)
+            // Docs: https://ai.google.dev/gemini-api/docs/openai#generate-image
             try {
                 val url = "https://generativelanguage.googleapis.com/v1beta/openai/images/generations"
                 val json = gson.toJson(mapOf(
@@ -118,69 +117,32 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     if (dataArray != null && dataArray.size() > 0) {
                         val b64 = dataArray[0].asJsonObject?.get("b64_json")?.asString
                         if (!b64.isNullOrBlank()) return@withContext b64
-                    }
-                    lastError = "El modelo no devolvió una imagen"
-                } else {
-                    lastError = try {
-                        val errParsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                        val errMsg = errParsed.getAsJsonObject("error")?.get("message")?.asString
-                        "HTTP ${response.code}: ${errMsg ?: response.message}"
-                    } catch (_: Exception) { "HTTP ${response.code}: ${response.message}" }
-                }
-            } catch (e: Exception) {
-                lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
-            }
-
-            // --- Ruta 2: endpoint generateContent legacy (gemini-2.0-flash-exp) ---
-            try {
-                val model = "gemini-2.0-flash-exp-image-generation"
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
-                val json = gson.toJson(mapOf(
-                    "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to prompt)))),
-                    "generationConfig" to mapOf("responseModalities" to listOf("TEXT", "IMAGE"))
-                ))
-                val req = Request.Builder().url(url).post(json.toRequestBody("application/json".toMediaType())).build()
-                val response = httpClient.newCall(req).execute()
-                val body = response.body?.string() ?: ""
-                if (response.isSuccessful) {
-                    val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                    val candidates = parsed.getAsJsonArray("candidates")
-                    if (candidates != null && candidates.size() > 0) {
-                        val content = candidates[0].asJsonObject.getAsJsonObject("content")
-                        val parts = content?.getAsJsonArray("parts")
-                        if (parts != null) {
-                            for (i in 0 until parts.size()) {
-                                val part = parts[i].asJsonObject
-                                if (part.has("inlineData")) {
-                                    val b64 = part.getAsJsonObject("inlineData").get("data")?.asString
-                                    if (!b64.isNullOrBlank()) return@withContext b64
+                        // Algunas respuestas usan url en vez de b64_json
+                        val imgUrl = dataArray[0].asJsonObject?.get("url")?.asString
+                        if (!imgUrl.isNullOrBlank()) {
+                            // Descargar la imagen y convertir a base64
+                            try {
+                                val imgReq = Request.Builder().url(imgUrl).build()
+                                httpClient.newCall(imgReq).execute().use { imgResp ->
+                                    val bytes = imgResp.body?.bytes()
+                                    if (bytes != null && bytes.isNotEmpty()) {
+                                        return@withContext android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                    }
                                 }
-                                if (part.has("inline_data")) {
-                                    val b64 = part.getAsJsonObject("inline_data").get("data")?.asString
-                                    if (!b64.isNullOrBlank()) return@withContext b64
-                                }
-                            }
+                            } catch (_: Exception) {}
                         }
                     }
-                    val promptFeedback = parsed.getAsJsonObject("promptFeedback")
-                    if (promptFeedback != null) {
-                        val blockReason = promptFeedback.get("blockReason")?.asString
-                        lastError = if (blockReason != null) "Bloqueado: $blockReason" else "El modelo no devolvió una imagen"
-                    } else {
-                        lastError = "El modelo no devolvió una imagen"
-                    }
+                    "ERROR:La API no devolvió una imagen (respuesta: ${body.take(200)})"
                 } else {
-                    lastError = try {
-                        val errParsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                        val errMsg = errParsed.getAsJsonObject("error")?.get("message")?.asString
-                        "HTTP ${response.code}: ${errMsg ?: response.message}"
-                    } catch (_: Exception) { "HTTP ${response.code}: ${response.message}" }
+                    val errMsg = try {
+                        com.google.gson.JsonParser.parseString(body).asJsonObject
+                            .getAsJsonObject("error")?.get("message")?.asString
+                    } catch (_: Exception) { null }
+                    "ERROR:HTTP ${response.code}: ${errMsg ?: response.message}"
                 }
             } catch (e: Exception) {
-                lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
+                "ERROR:${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
             }
-
-            "ERROR:$lastError"
         }
     }
 }
