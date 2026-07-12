@@ -63,7 +63,8 @@ class GeminiRepository(private val context: Context, private val db: GeminiDatab
     fun sendMessage(conversationId: String, model: GeminiModel, systemPrompt: String, temperature: Float): Flow<StreamEvent> = flow {
         val contents = getMessagesForApi(conversationId)
         if (contents.isEmpty()) { emit(StreamEvent.Error("No hay mensajes para enviar")); return@flow }
-        client.streamGenerate(model, contents, systemPrompt, GenerationConfig(temperature = temperature.toDouble())).collect { emit(it) }
+        val responseModalities = if (model.supportsImageOutput) listOf("TEXT", "IMAGE") else null
+        client.streamGenerate(model, contents, systemPrompt, GenerationConfig(temperature = temperature.toDouble(), responseModalities = responseModalities)).collect { emit(it) }
     }
 
     fun readImageAsBase64(uri: Uri): Pair<String, String> {

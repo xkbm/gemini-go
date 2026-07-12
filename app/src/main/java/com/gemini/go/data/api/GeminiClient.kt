@@ -96,10 +96,9 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val models = listOf(
+                "gemini-2.0-flash-exp-image-generation",
                 "gemini-2.5-flash-image",
-                "gemini-2.5-flash-image-preview",
-                "gemini-3.1-flash-image",
-                "gemini-2.0-flash-exp-image-generation"
+                "gemini-2.5-flash-image-preview"
             )
             var lastError = "Error desconocido"
             for (model in models) {

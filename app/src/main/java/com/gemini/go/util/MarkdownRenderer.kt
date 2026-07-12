@@ -45,7 +45,8 @@ object MarkdownRenderer {
 
     fun render(markdown: String): SpannableStringBuilder {
         val sb = SpannableStringBuilder()
-        val lines = markdown.lines()
+        // Asegurar trailing newline para detectar tablas en la última línea
+        val lines = (if (markdown.endsWith("\n")) markdown else markdown + "\n").lines()
         var inCodeBlock = false
         val codeBlockBuffer = StringBuilder()
         var inTable = false

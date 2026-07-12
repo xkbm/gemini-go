@@ -16,7 +16,8 @@ object MarkdownBlockParser {
 
     fun parse(markdown: String): List<MarkdownBlock> {
         val blocks = mutableListOf<MarkdownBlock>()
-        val lines = markdown.lines()
+        // Asegurar trailing newline para que el parser detecte bloques en la última línea
+        val lines = (if (markdown.endsWith("\n")) markdown else markdown + "\n").lines()
         val textBuffer = StringBuilder()
         var i = 0
 

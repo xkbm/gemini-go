@@ -12,7 +12,8 @@ data class Content(@SerializedName("role") val role: String, @SerializedName("pa
 data class GenerationConfig(
     @SerializedName("temperature") val temperature: Double = 0.9,
     @SerializedName("topP") val topP: Double = 0.95, @SerializedName("topK") val topK: Int = 40,
-    @SerializedName("maxOutputTokens") val maxOutputTokens: Int = 8192
+    @SerializedName("maxOutputTokens") val maxOutputTokens: Int = 8192,
+    @SerializedName("responseModalities") val responseModalities: List<String>? = null
 )
 data class GenerateRequest(
     @SerializedName("contents") val contents: List<Content>,

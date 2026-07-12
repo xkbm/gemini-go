@@ -108,60 +108,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         is StreamEvent.Error -> { assistantMsg.text = "⚠️ ${event.message}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = event.message }
-                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); tryGenerateImageFromText(assistantMsg) }
+                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg) }
                     }
                 }
             } catch (e: Exception) { assistantMsg.text = "⚠️ ${e.message ?: "Error"}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = e.message }
             finally { _isGenerating.value = false }
-        }
-    }
-    private fun tryGenerateImageFromText(assistantMsg: MessageEntity) {
-        val text = assistantMsg.text
-        if (text.isBlank()) return
-        val normalized = text.replace("\\\"", "\"").replace("\\\\", "\\")
-        val isImageGen = normalized.contains("dalle.text2im", ignoreCase = true) ||
-                         normalized.contains("text2im", ignoreCase = true) ||
-                         normalized.contains("image_generation", ignoreCase = true) ||
-                         normalized.contains("generate_image", ignoreCase = true) ||
-                         normalized.contains("generate an image", ignoreCase = true) ||
-                         normalized.contains("generar una imagen", ignoreCase = true) ||
-                         normalized.contains("generar imagen", ignoreCase = true) ||
-                         (normalized.contains("action", ignoreCase = true) && normalized.contains("prompt", ignoreCase = true) && (normalized.contains("image", ignoreCase = true) || normalized.contains("dalle", ignoreCase = true)))
-        if (!isImageGen) return
-        val promptPatterns = listOf(
-            Regex("\"?prompt\"?\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE),
-            Regex("\"?prompt\"?\\s*[:=]\\s*'([^']+)'", RegexOption.IGNORE_CASE),
-            Regex("\"?prompt\"?\\s*=\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
-        )
-        var prompt: String? = null
-        for (pattern in promptPatterns) { val match = pattern.find(normalized); if (match != null) { prompt = match.groupValues.getOrNull(1); if (!prompt.isNullOrBlank()) break } }
-        if (prompt.isNullOrBlank()) return
-        val cleanPrompt = prompt.trim()
-        viewModelScope.launch {
-            try {
-                assistantMsg.text = "🎨 Generando imagen…\n\n$cleanPrompt"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg)
-                val base64 = repo.generateImage(cleanPrompt)
-                if (base64 != null && !base64.startsWith("ERROR:")) {
-                    assistantMsg.generatedImageBase64 = base64
-                    assistantMsg.generatedImageMime = "image/png"
-                    assistantMsg.text = "🎨 $cleanPrompt"
-                    repo.updateMessage(assistantMsg)
-                } else if (base64 != null && base64.startsWith("ERROR:")) {
-                    val errMsg = base64.removePrefix("ERROR:")
-                    assistantMsg.text = "⚠️ No se pudo generar la imagen.\n\nError: $errMsg\n\nPrompt: $cleanPrompt"
-                    repo.updateMessage(assistantMsg)
-                } else {
-                    assistantMsg.text = "⚠️ No se pudo generar la imagen (respuesta vacía).\n\nPrompt: $cleanPrompt"
-                    repo.updateMessage(assistantMsg)
-                }
-            } catch (e: Exception) {
-                // Show full error details for debugging
-                val errorClass = e.javaClass.simpleName
-                val errorMsg = e.message ?: "(sin mensaje)"
-                val errorDetails = "$errorClass: $errorMsg"
-                assistantMsg.text = "⚠️ Error al generar imagen.\n\n$errorDetails\n\nPrompt: $cleanPrompt"
-                repo.updateMessage(assistantMsg)
-            }
         }
     }
     fun stopGenerating() {

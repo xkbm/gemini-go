@@ -95,34 +95,31 @@ class MessagesAdapter(
 
             if (displayText.isNotBlank()) {
                 messageContent.visibility = View.VISIBLE
-                if (item.isStreaming) {
-                    // While streaming, render as simple text (no block parsing — partial tables look bad)
-                    val tv = createTextView(displayText)
-                    messageContent.addView(tv)
-                } else {
-                    // Parse into blocks and render each one
-                    val blocks = MarkdownBlockParser.parse(displayText)
-                    for (block in blocks) {
-                        when (block) {
-                            is MarkdownBlock.TextBlock -> {
-                                val tv = createTextView(block.text)
-                                messageContent.addView(tv)
-                            }
-                            is MarkdownBlock.TableBlock -> {
-                                val table = createTableView(block.header, block.rows)
-                                messageContent.addView(table)
-                            }
-                            is MarkdownBlock.CodeBlock -> {
-                                val tv = createCodeView(block.code)
-                                messageContent.addView(tv)
-                            }
+                // Parse into blocks and render each one — both during streaming and when done.
+                // During streaming, partial tables (header without separator) fall through to
+                // TextBlock naturally, so the user sees pipes as text until the table is complete,
+                // then it snaps to a native TableLayout.
+                val blocks = MarkdownBlockParser.parse(displayText)
+                for (block in blocks) {
+                    when (block) {
+                        is MarkdownBlock.TextBlock -> {
+                            val tv = createTextView(block.text)
+                            messageContent.addView(tv)
+                        }
+                        is MarkdownBlock.TableBlock -> {
+                            val table = createTableView(block.header, block.rows)
+                            messageContent.addView(table)
+                        }
+                        is MarkdownBlock.CodeBlock -> {
+                            val tv = createCodeView(block.code)
+                            messageContent.addView(tv)
                         }
                     }
-                    // If no blocks were created (empty text), add a placeholder
-                    if (messageContent.childCount == 0) {
-                        val tv = createTextView(displayText)
-                        messageContent.addView(tv)
-                    }
+                }
+                // If no blocks were created (empty text), add a placeholder
+                if (messageContent.childCount == 0) {
+                    val tv = createTextView(displayText)
+                    messageContent.addView(tv)
                 }
             } else {
                 // No text — hide the content container (image-only message)
@@ -228,7 +225,8 @@ class MessagesAdapter(
             val params = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
             params.setMargins(1, 1, 1, 1)  // thin border between cells
             cell.layoutParams = params
-            cell.text = text
+            cell.text = MarkdownRenderer.render(text)
+            MarkdownRenderer.enableLinks(cell)
             cell.setTextColor(Color.WHITE)
             cell.textSize = 14f
             cell.setPadding(20, 16, 20, 16)
