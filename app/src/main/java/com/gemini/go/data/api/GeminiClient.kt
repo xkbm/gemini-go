@@ -96,9 +96,8 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val models = listOf(
-                "gemini-2.0-flash-exp-image-generation",
                 "gemini-2.5-flash-image",
-                "gemini-2.5-flash-image-preview"
+                "gemini-2.0-flash-exp-image-generation"
             )
             var lastError = "Error desconocido"
             for (model in models) {
@@ -140,6 +139,9 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     if (promptFeedback != null) {
                         val blockReason = promptFeedback.get("blockReason")?.asString
                         if (blockReason != null) lastError = "Bloqueado: $blockReason"
+                        else lastError = "El modelo '$model' no devolvió una imagen"
+                    } else {
+                        lastError = "El modelo '$model' no devolvió una imagen"
                     }
                 } catch (e: Exception) {
                     lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"

@@ -31,6 +31,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val currentConversation: LiveData<ConversationEntity?> = _currentConversation
     private var streamJob: Job? = null
     private var messagesObserverJob: Job? = null
+    private var pendingImageGen = false
     val hasApiKey: Boolean get() = prefs.apiKey.isNotBlank()
     val currentModel: GeminiModel get() = prefs.model
 
@@ -90,6 +91,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             if (fnName.contains("image") || fnName.contains("generate") || fnName.contains("imagen") || fnName.contains("draw") || fnName.contains("dalle") || fnName.contains("text2im")) {
                                 val promptArg = event.args.entries.firstOrNull { it.key.lowercase().contains("prompt") }?.value?.toString()
                                 if (promptArg != null) {
+                                    pendingImageGen = true
                                     viewModelScope.launch {
                                         try {
                                             assistantMsg.text = "🎨 Generando imagen…\n\n$promptArg"; repo.updateMessage(assistantMsg)
@@ -103,12 +105,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                                 assistantMsg.text = "⚠️ No se pudo generar la imagen.\n\nPrompt: $promptArg"; repo.updateMessage(assistantMsg)
                                             }
                                         } catch (e: Exception) { assistantMsg.text = "⚠️ Error: ${e.message}"; repo.updateMessage(assistantMsg) }
+                                        finally { pendingImageGen = false }
                                     }
                                 } else { assistantMsg.text = "🎨 Generando imagen…"; repo.updateMessage(assistantMsg) }
                             }
                         }
                         is StreamEvent.Error -> { assistantMsg.text = "⚠️ ${event.message}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = event.message }
-                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); if (!model.supportsImageOutput) tryGenerateImageFromResponse(assistantMsg) }
+                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); if (!model.supportsImageOutput && !pendingImageGen) tryGenerateImageFromResponse(assistantMsg) }
                     }
                 }
             } catch (e: Exception) { assistantMsg.text = "⚠️ ${e.message ?: "Error"}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = e.message }
@@ -125,31 +128,50 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val text = assistantMsg.text
         if (text.isBlank()) return
 
-        val patterns = listOf(
-            Regex("\"action\"\\s*[:=]\\s*\"(?:dalle\\.text2im|image_generation|generate_image|text2im|draw_image|generate_picture)\"", RegexOption.IGNORE_CASE),
-            Regex("\"(?:action_input|input|prompt)\"\\s*[:=]\\s*\"?\\s*\\{?", RegexOption.IGNORE_CASE)
-        )
-        val isImageGen = patterns.any { it.containsMatchIn(text) } &&
-                         (text.contains("prompt", ignoreCase = true) || text.contains("image", ignoreCase = true))
+        // Detectar patrones de solicitud de generacion de imagen
+        val isImageGen = text.contains("dalle.text2im", ignoreCase = true) ||
+                         text.contains("image_generation", ignoreCase = true) ||
+                         text.contains("generate_image", ignoreCase = true) ||
+                         text.contains("text2im", ignoreCase = true) ||
+                         text.contains("draw_image", ignoreCase = true) ||
+                         (text.contains("\"action\"", ignoreCase = true) &&
+                          text.contains("image", ignoreCase = true) &&
+                          text.contains("prompt", ignoreCase = true))
         if (!isImageGen) return
 
-        // Extraer el prompt del JSON anidado. El formato varia:
-        //   "action_input": "{ \"prompt\": \"...\" }"   (prompt escapado dentro de un string JSON)
-        //   "prompt": "..."
+        // Extraer el prompt del JSON usando JSONObject para manejar escapes correctamente.
+        // El formato que produce Gemini es:
+        //   { "action": "dalle.text2im", "action_input": "{ \"prompt\": \"...\" }", "thought": "..." }
+        // action_input es un string que contiene JSON escapado — JSONObject lo parsea correctamente.
         var prompt: String? = null
-        val promptPatterns = listOf(
-            Regex("(?:action_input|input)\"?\\s*[:=]\\s*\"?\\s*\\{?\\s*\"?prompt\"?\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE),
-            Regex("\"prompt\"\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE),
-            Regex("\"prompt\"\\s*[:=]\\s*'([^']+)'", RegexOption.IGNORE_CASE),
-            Regex("(?:action_input|input)\"?\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
-        )
-        for (pattern in promptPatterns) {
-            val match = pattern.find(text)
-            if (match != null) { prompt = match.groupValues.getOrNull(1); if (!prompt.isNullOrBlank()) break }
+        try {
+            val json = org.json.JSONObject(text)
+            // Intentar action_input como JSON anidado
+            val actionInput = json.optString("action_input", "")
+            if (actionInput.isNotBlank()) {
+                try {
+                    val nested = org.json.JSONObject(actionInput)
+                    prompt = nested.optString("prompt", "")
+                } catch (_: Exception) {
+                    // action_input no es JSON, usarlo directamente como prompt
+                    if (actionInput.isNotBlank()) prompt = actionInput
+                }
+            }
+            // Si no hay prompt aun, buscar a nivel superior
+            if (prompt.isNullOrBlank()) prompt = json.optString("prompt", "")
+            // Si tampoco, probar con "input"
+            if (prompt.isNullOrBlank()) prompt = json.optString("input", "")
+        } catch (_: Exception) {
+            // No es JSON valido — fallback a regex simple
+            val regexPattern = Regex("\"prompt\"\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+            val match = regexPattern.find(text)
+            if (match != null) prompt = match.groupValues.getOrNull(1)
         }
-        if (prompt.isNullOrBlank()) return
 
-        val cleanPrompt = prompt.trim().replace("\\\"", "\"").replace("\\\\", "\\")
+        if (prompt.isNullOrBlank()) return
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isBlank()) return
+
         viewModelScope.launch {
             try {
                 assistantMsg.text = "🎨 Generando imagen…\n\n$cleanPrompt"; repo.updateMessage(assistantMsg)

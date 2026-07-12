@@ -14,8 +14,7 @@ data class GeminiModel(
             GeminiModel("gemini-2.5-pro", "Gemini 2.5 Pro", "Más potente para razonamiento complejo"),
             GeminiModel("gemini-2.0-flash", "Gemini 2.0 Flash", "Generación anterior, rápido"),
             GeminiModel("gemini-2.0-flash-exp-image-generation", "Gemini 2.0 Flash (Image Gen)", "Experimental — genera texto e imágenes", supportsImageOutput = true),
-            GeminiModel("gemini-2.5-flash-image", "Gemini 2.5 Flash Image", "Genera imágenes — conocido como Nano Banana", supportsImageOutput = true),
-            GeminiModel("gemini-2.5-flash-image-preview", "Gemini 2.5 Flash Image (Preview)", "Preview de Nano Banana — deprecado pero aún funcional", supportsImageOutput = true)
+            GeminiModel("gemini-2.5-flash-image", "Gemini 2.5 Flash Image", "Genera imágenes — conocido como Nano Banana", supportsImageOutput = true)
         )
         val DEFAULT = PRESETS.first { it.id == "gemini-3.1-flash-lite" }
         fun fromId(id: String?): GeminiModel {
