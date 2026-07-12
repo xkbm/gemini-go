@@ -7,6 +7,7 @@ Gemini Go es una app nativa en Kotlin que ofrece chat conversacional con los mod
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![API](https://img.shields.io/badge/minSdk-26-brightgreen)](https://developer.android.com/about/versions/oreo)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.23-purple)](https://kotlinlang.org)
+[![Release](https://img.shields.io/github/v/release/xkbm/gemini-go)](https://github.com/xkbm/gemini-go/releases)
 
 ---
 
@@ -183,6 +184,7 @@ También puedes abrir el proyecto en Android Studio, sincronizar Gradle y ejecut
 - [Google AI Studio — Obtener API key](https://aistudio.google.com/app/apikey)
 - [Documentación de la API Gemini](https://ai.google.dev/gemini-api/docs)
 - [Android Go Edition](https://www.android.com/versions/go-edition/)
+- [Releases y changelog](https://github.com/xkbm/gemini-go/releases)
 
 ---
 
