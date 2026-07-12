@@ -95,54 +95,79 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
      */
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            // Endpoint OpenAI-compatible (unico que soporta gemini-2.5-flash-image en v1beta)
-            // Docs: https://ai.google.dev/gemini-api/docs/openai#generate-image
-            try {
-                val url = "https://generativelanguage.googleapis.com/v1beta/openai/images/generations"
-                val json = gson.toJson(mapOf(
-                    "model" to "gemini-2.5-flash-image",
-                    "prompt" to prompt,
-                    "response_format" to "b64_json",
-                    "n" to 1
-                ))
-                val req = Request.Builder().url(url)
-                    .post(json.toRequestBody("application/json".toMediaType()))
-                    .addHeader("Authorization", "Bearer $apiKey")
-                    .build()
-                val response = httpClient.newCall(req).execute()
-                val body = response.body?.string() ?: ""
-                if (response.isSuccessful) {
-                    val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                    val dataArray = parsed.getAsJsonArray("data")
-                    if (dataArray != null && dataArray.size() > 0) {
-                        val b64 = dataArray[0].asJsonObject?.get("b64_json")?.asString
-                        if (!b64.isNullOrBlank()) return@withContext b64
-                        // Algunas respuestas usan url en vez de b64_json
-                        val imgUrl = dataArray[0].asJsonObject?.get("url")?.asString
-                        if (!imgUrl.isNullOrBlank()) {
-                            // Descargar la imagen y convertir a base64
-                            try {
-                                val imgReq = Request.Builder().url(imgUrl).build()
-                                httpClient.newCall(imgReq).execute().use { imgResp ->
-                                    val bytes = imgResp.body?.bytes()
-                                    if (bytes != null && bytes.isNotEmpty()) {
-                                        return@withContext android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            // Interactions API — modelos Nano Banana 2 con tier gratis (julio 2026).
+            // Docs: https://ai.google.dev/gemini-api/docs/interactions/image-generation
+            // Se prueban en orden: Lite (mas rapido/barato) -> Flash -> Pro -> legacy 2.5
+            val models = listOf(
+                "gemini-3.1-flash-lite-image",
+                "gemini-3.1-flash-image",
+                "gemini-3-pro-image",
+                "gemini-2.5-flash-image"
+            )
+            var lastError = "Error desconocido"
+            for (model in models) {
+                try {
+                    val url = "https://generativelanguage.googleapis.com/v1beta/interactions"
+                    val json = gson.toJson(mapOf(
+                        "model" to model,
+                        "input" to listOf(mapOf("type" to "text", "text" to prompt))
+                    ))
+                    val req = Request.Builder().url(url)
+                        .post(json.toRequestBody("application/json".toMediaType()))
+                        .addHeader("x-goog-api-key", apiKey)
+                        .build()
+                    val response = httpClient.newCall(req).execute()
+                    val body = response.body?.string() ?: ""
+                    if (response.isSuccessful) {
+                        val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
+                        // Interactions API: interaction.output_image.data (base64)
+                        val outputImage = parsed.getAsJsonObject("output_image")
+                        if (outputImage != null) {
+                            val b64 = outputImage.get("data")?.asString
+                            if (!b64.isNullOrBlank()) return@withContext b64
+                        }
+                        // Fallback: buscar image en steps/output
+                        val output = parsed.getAsJsonObject("output")
+                        if (output != null) {
+                            val b64 = output.get("data")?.asString
+                            if (!b64.isNullOrBlank()) return@withContext b64
+                        }
+                        // Fallback: buscar en steps[].content[].image
+                        val steps = parsed.getAsJsonArray("steps")
+                        if (steps != null) {
+                            for (i in 0 until steps.size()) {
+                                val step = steps[i].asJsonObject
+                                val content = step.getAsJsonArray("content")
+                                if (content != null) {
+                                    for (j in 0 until content.size()) {
+                                        val block = content[j].asJsonObject
+                                        val image = block.getAsJsonObject("image")
+                                        if (image != null) {
+                                            val b64 = image.get("data")?.asString
+                                            if (!b64.isNullOrBlank()) return@withContext b64
+                                        }
                                     }
                                 }
-                            } catch (_: Exception) {}
+                            }
                         }
+                        lastError = "El modelo '$model' no devolvió una imagen (resp: ${body.take(150)})"
+                    } else {
+                        val errMsg = try {
+                            com.google.gson.JsonParser.parseString(body).asJsonObject
+                                .getAsJsonObject("error")?.get("message")?.asString
+                        } catch (_: Exception) { null }
+                        // Si es 429 (quota), probar siguiente modelo; si es 404, el modelo no existe
+                        lastError = "HTTP ${response.code}: ${errMsg ?: response.message}"
+                        // Si es 404 el modelo no existe — seguir al siguiente
+                        // Si es 429 quota de este modelo — seguir al siguiente
+                        // Si es 400 (prompt bloqueado) — no seguir
+                        if (response.code == 400) break
                     }
-                    "ERROR:La API no devolvió una imagen (respuesta: ${body.take(200)})"
-                } else {
-                    val errMsg = try {
-                        com.google.gson.JsonParser.parseString(body).asJsonObject
-                            .getAsJsonObject("error")?.get("message")?.asString
-                    } catch (_: Exception) { null }
-                    "ERROR:HTTP ${response.code}: ${errMsg ?: response.message}"
+                } catch (e: Exception) {
+                    lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
                 }
-            } catch (e: Exception) {
-                "ERROR:${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
             }
+            "ERROR:$lastError"
         }
     }
 }
