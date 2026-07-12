@@ -97,7 +97,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                             assistantMsg.text = "🎨 Generando imagen…\n\n$promptArg"; repo.updateMessage(assistantMsg)
                                             val base64 = repo.generateImage(promptArg)
                                             if (base64 != null && !base64.startsWith("ERROR:")) {
-                                                assistantMsg.generatedImageBase64 = base64; assistantMsg.generatedImageMime = "image/png"; assistantMsg.text = "🎨 $promptArg"; repo.updateMessage(assistantMsg)
+                                                if (base64.startsWith("POLLINATIONS:")) {
+                                                    assistantMsg.generatedImageBase64 = base64.removePrefix("POLLINATIONS:"); assistantMsg.generatedImageMime = "image/png"; assistantMsg.text = "🎨 $promptArg\n\n_Imagen generada por Pollinations.ai — no por Gemini_"; repo.updateMessage(assistantMsg)
+                                                } else {
+                                                    assistantMsg.generatedImageBase64 = base64; assistantMsg.generatedImageMime = "image/png"; assistantMsg.text = "🎨 $promptArg"; repo.updateMessage(assistantMsg)
+                                                }
                                             } else if (base64 != null && base64.startsWith("ERROR:")) {
                                                 val errMsg = base64.removePrefix("ERROR:")
                                                 assistantMsg.text = "⚠️ No se pudo generar la imagen.\n\nError: $errMsg\n\nPrompt: $promptArg"; repo.updateMessage(assistantMsg)
@@ -177,9 +181,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 assistantMsg.text = "🎨 Generando imagen…\n\n$cleanPrompt"; repo.updateMessage(assistantMsg)
                 val base64 = repo.generateImage(cleanPrompt)
                 if (base64 != null && !base64.startsWith("ERROR:")) {
-                    assistantMsg.generatedImageBase64 = base64
-                    assistantMsg.generatedImageMime = "image/png"
-                    assistantMsg.text = "🎨 $cleanPrompt"
+                    if (base64.startsWith("POLLINATIONS:")) {
+                        assistantMsg.generatedImageBase64 = base64.removePrefix("POLLINATIONS:")
+                        assistantMsg.generatedImageMime = "image/png"
+                        assistantMsg.text = "🎨 $cleanPrompt\n\n_Imagen generada por Pollinations.ai — no por Gemini_"
+                    } else {
+                        assistantMsg.generatedImageBase64 = base64
+                        assistantMsg.generatedImageMime = "image/png"
+                        assistantMsg.text = "🎨 $cleanPrompt"
+                    }
                     repo.updateMessage(assistantMsg)
                 } else if (base64 != null && base64.startsWith("ERROR:")) {
                     val errMsg = base64.removePrefix("ERROR:")

@@ -95,9 +95,7 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
      */
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            // Modelos Imagen 4 — los unicos con tier gratis (25 RPD segun Google AI Studio).
-            // Endpoint :predict (no :generateContent ni Interactions API).
-            // Docs: https://ai.google.dev/gemini-api/docs/imagen
+            // --- Ruta 1: Imagen 4 (Gemini, requiere billing) ---
             val models = listOf(
                 "imagen-4.0-fast-generate-001",
                 "imagen-4.0-generate-001",
@@ -109,9 +107,7 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:predict?key=$apiKey"
                     val json = gson.toJson(mapOf(
                         "instances" to listOf(mapOf("prompt" to prompt)),
-                        "parameters" to mapOf(
-                            "sampleCount" to 1
-                        )
+                        "parameters" to mapOf("sampleCount" to 1)
                     ))
                     val req = Request.Builder().url(url)
                         .post(json.toRequestBody("application/json".toMediaType()))
@@ -120,7 +116,6 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     val body = response.body?.string() ?: ""
                     if (response.isSuccessful) {
                         val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                        // Respuesta: {predictions: [{bytesBase64Encoded: "..."}]}
                         val predictions = parsed.getAsJsonArray("predictions")
                         if (predictions != null && predictions.size() > 0) {
                             val prediction = predictions[0].asJsonObject
@@ -140,6 +135,27 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     errors.add("$model: ${e.javaClass.simpleName}: ${e.message ?: "Excepción"}")
                 }
             }
+
+            // --- Ruta 2: Pollinations.ai (gratis, sin API key) ---
+            try {
+                val sanitized = prompt.replace(" ", "-")
+                    .replace(Regex("[^a-zA-Z0-9\\-_]"), "")
+                    .take(200)
+                val url = "https://image.pollinations.ai/prompt/$sanitized?model=flux"
+                val req = Request.Builder().url(url).get().build()
+                val response = httpClient.newCall(req).execute()
+                if (response.isSuccessful) {
+                    val bytes = response.body?.bytes()
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        return@withContext "POLLINATIONS:$b64"
+                    }
+                }
+                errors.add("pollinations.ai: HTTP ${response.code}")
+            } catch (e: Exception) {
+                errors.add("pollinations.ai: ${e.javaClass.simpleName}: ${e.message ?: "Excepción"}")
+            }
+
             "ERROR:Todos los modelos fallaron:\n${errors.joinToString("\n")}"
         }
     }
