@@ -16,6 +16,7 @@ import android.text.style.TypefaceSpan
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.HorizontalScrollView
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -180,18 +181,15 @@ class MessagesAdapter(
          * Creates a native TableLayout for markdown tables.
          * This guarantees perfect alignment regardless of font.
          */
-        private fun createTableView(header: List<String>, rows: List<List<String>>): TableLayout {
+        private fun createTableView(header: List<String>, rows: List<List<String>>): View {
             val ctx = itemView.context
             val table = TableLayout(ctx)
-            val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            params.bottomMargin = 8
-            table.layoutParams = params
-            table.isShrinkAllColumns = true
+            table.isShrinkAllColumns = false
             table.isStretchAllColumns = false
 
             // Header row
             val headerRow = TableRow(ctx)
-            headerRow.layoutParams = TableLayout.LayoutParams(TableLayout.LayoutParams.MATCH_PARENT, TableLayout.LayoutParams.WRAP_CONTENT)
+            headerRow.layoutParams = TableLayout.LayoutParams(TableLayout.LayoutParams.WRAP_CONTENT, TableLayout.LayoutParams.WRAP_CONTENT)
             headerRow.setBackgroundColor(Color.parseColor("#2D2D2D"))
             for (cellText in header) {
                 val cell = createTableCell(ctx, cellText, isHeader = true)
@@ -202,7 +200,7 @@ class MessagesAdapter(
             // Body rows
             for ((rowIdx, row) in rows.withIndex()) {
                 val tableRow = TableRow(ctx)
-                tableRow.layoutParams = TableLayout.LayoutParams(TableLayout.LayoutParams.MATCH_PARENT, TableLayout.LayoutParams.WRAP_CONTENT)
+                tableRow.layoutParams = TableLayout.LayoutParams(TableLayout.LayoutParams.WRAP_CONTENT, TableLayout.LayoutParams.WRAP_CONTENT)
                 // Alternating row backgrounds for readability
                 if (rowIdx % 2 == 1) {
                     tableRow.setBackgroundColor(Color.parseColor("#1A1A1A"))
@@ -214,7 +212,15 @@ class MessagesAdapter(
                 table.addView(tableRow)
             }
 
-            return table
+            // Wrap in HorizontalScrollView for horizontal scrolling when table is wide
+            val scrollView = HorizontalScrollView(ctx)
+            val scrollParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            scrollParams.bottomMargin = 8
+            scrollView.layoutParams = scrollParams
+            scrollView.isHorizontalScrollBarEnabled = true
+            scrollView.addView(table)
+
+            return scrollView
         }
 
         /**

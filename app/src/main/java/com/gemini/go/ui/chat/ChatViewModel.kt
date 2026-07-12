@@ -108,11 +108,68 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         is StreamEvent.Error -> { assistantMsg.text = "⚠️ ${event.message}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = event.message }
-                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg) }
+                        is StreamEvent.Done -> { assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); if (!model.supportsImageOutput) tryGenerateImageFromResponse(assistantMsg) }
                     }
                 }
             } catch (e: Exception) { assistantMsg.text = "⚠️ ${e.message ?: "Error"}"; assistantMsg.isStreaming = false; repo.updateMessage(assistantMsg); _error.value = e.message }
             finally { _isGenerating.value = false }
+        }
+    }
+    /**
+     * Detecta cuando un modelo de texto responde con un JSON estilo ChatGPT solicitando
+     * generacion de imagen (action: dalle.text2im / image_generation / generate_image)
+     * y dispara la generacion nativa via [GeminiClient.generateImage].
+     * Solo se invoca cuando el modelo NO soporta imagen nativa (supportsImageOutput=false).
+     */
+    private fun tryGenerateImageFromResponse(assistantMsg: MessageEntity) {
+        val text = assistantMsg.text
+        if (text.isBlank()) return
+
+        val patterns = listOf(
+            Regex("\"action\"\\s*[:=]\\s*\"(?:dalle\\.text2im|image_generation|generate_image|text2im|draw_image|generate_picture)\"", RegexOption.IGNORE_CASE),
+            Regex("\"(?:action_input|input|prompt)\"\\s*[:=]\\s*\"?\\s*\\{?", RegexOption.IGNORE_CASE)
+        )
+        val isImageGen = patterns.any { it.containsMatchIn(text) } &&
+                         (text.contains("prompt", ignoreCase = true) || text.contains("image", ignoreCase = true))
+        if (!isImageGen) return
+
+        // Extraer el prompt del JSON anidado. El formato varia:
+        //   "action_input": "{ \"prompt\": \"...\" }"   (prompt escapado dentro de un string JSON)
+        //   "prompt": "..."
+        var prompt: String? = null
+        val promptPatterns = listOf(
+            Regex("(?:action_input|input)\"?\\s*[:=]\\s*\"?\\s*\\{?\\s*\"?prompt\"?\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE),
+            Regex("\"prompt\"\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE),
+            Regex("\"prompt\"\\s*[:=]\\s*'([^']+)'", RegexOption.IGNORE_CASE),
+            Regex("(?:action_input|input)\"?\\s*[:=]\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in promptPatterns) {
+            val match = pattern.find(text)
+            if (match != null) { prompt = match.groupValues.getOrNull(1); if (!prompt.isNullOrBlank()) break }
+        }
+        if (prompt.isNullOrBlank()) return
+
+        val cleanPrompt = prompt.trim().replace("\\\"", "\"").replace("\\\\", "\\")
+        viewModelScope.launch {
+            try {
+                assistantMsg.text = "🎨 Generando imagen…\n\n$cleanPrompt"; repo.updateMessage(assistantMsg)
+                val base64 = repo.generateImage(cleanPrompt)
+                if (base64 != null && !base64.startsWith("ERROR:")) {
+                    assistantMsg.generatedImageBase64 = base64
+                    assistantMsg.generatedImageMime = "image/png"
+                    assistantMsg.text = "🎨 $cleanPrompt"
+                    repo.updateMessage(assistantMsg)
+                } else if (base64 != null && base64.startsWith("ERROR:")) {
+                    val errMsg = base64.removePrefix("ERROR:")
+                    assistantMsg.text = "⚠️ No se pudo generar la imagen.\n\nError: $errMsg\n\nPrompt: $cleanPrompt"
+                    repo.updateMessage(assistantMsg)
+                } else {
+                    // Limpiar el JSON de ChatGPT — mostrar solo el prompt
+                    assistantMsg.text = "🎨 $cleanPrompt"; repo.updateMessage(assistantMsg)
+                }
+            } catch (e: Exception) {
+                assistantMsg.text = "⚠️ Error: ${e.message ?: "(sin mensaje)"}"; repo.updateMessage(assistantMsg)
+            }
         }
     }
     fun stopGenerating() {
