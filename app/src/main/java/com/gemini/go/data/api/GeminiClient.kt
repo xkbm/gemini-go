@@ -95,29 +95,54 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
      */
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val models = listOf(
-                "gemini-2.5-flash-image",
-                "gemini-2.0-flash-exp-image-generation"
-            )
             var lastError = "Error desconocido"
-            for (model in models) {
-                try {
-                    val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
-                    val json = gson.toJson(mapOf(
-                        "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to prompt)))),
-                        "generationConfig" to mapOf("responseModalities" to listOf("TEXT", "IMAGE"))
-                    ))
-                    val req = Request.Builder().url(url).post(json.toRequestBody("application/json".toMediaType())).build()
-                    val response = httpClient.newCall(req).execute()
-                    val body = response.body?.string() ?: ""
-                    if (!response.isSuccessful) {
-                        lastError = try {
-                            val errParsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                            val errMsg = errParsed.getAsJsonObject("error")?.get("message")?.asString
-                            "HTTP ${response.code}: ${errMsg ?: response.message}"
-                        } catch (_: Exception) { "HTTP ${response.code}: ${response.message}" }
-                        continue
+
+            // --- Ruta 1: endpoint OpenAI-compatible (gemini-2.5-flash-image) ---
+            try {
+                val url = "https://generativelanguage.googleapis.com/v1beta/openai/images/generations"
+                val json = gson.toJson(mapOf(
+                    "model" to "gemini-2.5-flash-image",
+                    "prompt" to prompt,
+                    "response_format" to "b64_json",
+                    "n" to 1
+                ))
+                val req = Request.Builder().url(url)
+                    .post(json.toRequestBody("application/json".toMediaType()))
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
+                val response = httpClient.newCall(req).execute()
+                val body = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
+                    val dataArray = parsed.getAsJsonArray("data")
+                    if (dataArray != null && dataArray.size() > 0) {
+                        val b64 = dataArray[0].asJsonObject?.get("b64_json")?.asString
+                        if (!b64.isNullOrBlank()) return@withContext b64
                     }
+                    lastError = "El modelo no devolvió una imagen"
+                } else {
+                    lastError = try {
+                        val errParsed = com.google.gson.JsonParser.parseString(body).asJsonObject
+                        val errMsg = errParsed.getAsJsonObject("error")?.get("message")?.asString
+                        "HTTP ${response.code}: ${errMsg ?: response.message}"
+                    } catch (_: Exception) { "HTTP ${response.code}: ${response.message}" }
+                }
+            } catch (e: Exception) {
+                lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
+            }
+
+            // --- Ruta 2: endpoint generateContent legacy (gemini-2.0-flash-exp) ---
+            try {
+                val model = "gemini-2.0-flash-exp-image-generation"
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                val json = gson.toJson(mapOf(
+                    "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to prompt)))),
+                    "generationConfig" to mapOf("responseModalities" to listOf("TEXT", "IMAGE"))
+                ))
+                val req = Request.Builder().url(url).post(json.toRequestBody("application/json".toMediaType())).build()
+                val response = httpClient.newCall(req).execute()
+                val body = response.body?.string() ?: ""
+                if (response.isSuccessful) {
                     val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
                     val candidates = parsed.getAsJsonArray("candidates")
                     if (candidates != null && candidates.size() > 0) {
@@ -127,10 +152,12 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                             for (i in 0 until parts.size()) {
                                 val part = parts[i].asJsonObject
                                 if (part.has("inlineData")) {
-                                    return@withContext part.getAsJsonObject("inlineData").get("data")?.asString
+                                    val b64 = part.getAsJsonObject("inlineData").get("data")?.asString
+                                    if (!b64.isNullOrBlank()) return@withContext b64
                                 }
                                 if (part.has("inline_data")) {
-                                    return@withContext part.getAsJsonObject("inline_data").get("data")?.asString
+                                    val b64 = part.getAsJsonObject("inline_data").get("data")?.asString
+                                    if (!b64.isNullOrBlank()) return@withContext b64
                                 }
                             }
                         }
@@ -138,15 +165,21 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                     val promptFeedback = parsed.getAsJsonObject("promptFeedback")
                     if (promptFeedback != null) {
                         val blockReason = promptFeedback.get("blockReason")?.asString
-                        if (blockReason != null) lastError = "Bloqueado: $blockReason"
-                        else lastError = "El modelo '$model' no devolvió una imagen"
+                        lastError = if (blockReason != null) "Bloqueado: $blockReason" else "El modelo no devolvió una imagen"
                     } else {
-                        lastError = "El modelo '$model' no devolvió una imagen"
+                        lastError = "El modelo no devolvió una imagen"
                     }
-                } catch (e: Exception) {
-                    lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
+                } else {
+                    lastError = try {
+                        val errParsed = com.google.gson.JsonParser.parseString(body).asJsonObject
+                        val errMsg = errParsed.getAsJsonObject("error")?.get("message")?.asString
+                        "HTTP ${response.code}: ${errMsg ?: response.message}"
+                    } catch (_: Exception) { "HTTP ${response.code}: ${response.message}" }
                 }
+            } catch (e: Exception) {
+                lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
             }
+
             "ERROR:$lastError"
         }
     }
