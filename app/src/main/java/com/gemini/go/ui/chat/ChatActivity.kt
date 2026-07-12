@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -26,6 +28,7 @@ import com.gemini.go.ui.conversations.ConversationsActivity
 import com.gemini.go.ui.settings.SettingsActivity
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class ChatActivity : AppCompatActivity() {
     private lateinit var binding: ActivityChatBinding
@@ -74,7 +77,18 @@ class ChatActivity : AppCompatActivity() {
             }
         }
         binding.btnAttach.setOnClickListener { pickImageLauncher.launch("image/*") }
+        binding.btnMic.setOnClickListener {
+            if (viewModel.isSttListening) viewModel.cancelListening()
+            else viewModel.startListening { text ->
+                if (text.isNotBlank()) binding.editMessage.setText(text)
+            }
+        }
         binding.btnSend.isEnabled = false
+    }
+    private fun setupRecyclerView() {
+        binding.messagesRecyclerView.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
+        binding.messagesRecyclerView.adapter = adapter
+        binding.messagesRecyclerView.itemAnimator?.changeDuration = 0
     }
     private fun setupWelcomeChips() {
         val chips = listOf(binding.chipPrompt1, binding.chipPrompt2, binding.chipPrompt3, binding.chipPrompt4)

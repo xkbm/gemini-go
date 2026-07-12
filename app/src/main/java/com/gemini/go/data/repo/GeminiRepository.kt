@@ -77,8 +77,62 @@ class GeminiRepository(private val context: Context, private val db: GeminiDatab
         return try {
             client.generateImage(prompt)
         } catch (e: Exception) {
-            // Return the error so the ViewModel can show it
             "ERROR:Excepción: ${e.javaClass.simpleName}: ${e.message ?: "(sin mensaje)"}"
         }
     }
+
+    // Export functionality
+    suspend fun exportConversation(conversationId: String, format: ExportFormat): String {
+        val conv = db.conversationDao().getById(conversationId)
+        val messages = db.messageDao().getByConversation(conversationId)
+        return when (format) {
+            ExportFormat.TXT -> exportToTxt(conv, messages)
+            ExportFormat.JSON -> exportToJson(conv, messages)
+        }
+    }
+
+    private fun exportToTxt(conv: ConversationEntity?, messages: List<MessageEntity>): String {
+        val sb = StringBuilder()
+        sb.appendLine("Conversación: ${conv?.title ?: "Sin título"}")
+        sb.appendLine("Fecha: ${conv?.createdAt?.let { java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it)) } ?: "Desconocida"}")
+        sb.appendLine("Modelo: ${conv?.modelId ?: "Desconocido"}")
+        sb.appendLine("Mensajes: ${messages.size}")
+        sb.appendLine("".padEnd(50, '='))
+        sb.appendLine()
+        for (msg in messages) {
+            val role = if (msg.role == "user") "Tú" else "Gemini"
+            val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(msg.timestamp))
+            sb.appendLine("[$time] $role:")
+            sb.appendLine(msg.text)
+            if (msg.imagePaths.isNotBlank()) sb.appendLine("[Imagen adjunta: ${msg.imagePaths}]")
+            if (msg.generatedImageBase64.isNotBlank()) sb.appendLine("[Imagen generada]")
+            sb.appendLine()
+        }
+        return sb.toString()
+    }
+
+    private fun exportToJson(conv: ConversationEntity?, messages: List<MessageEntity>): String {
+        val map = mutableMapOf<String, Any>()
+        map["conversation"] = mapOf(
+            "id" to conv?.id,
+            "title" to conv?.title,
+            "modelId" to conv?.modelId,
+            "createdAt" to conv?.createdAt,
+            "updatedAt" to conv?.updatedAt
+        )
+        map["messages"] = messages.map { msg ->
+            mapOf(
+                "id" to msg.id,
+                "role" to msg.role,
+                "text" to msg.text,
+                "imagePaths" to msg.imagePaths,
+                "timestamp" to msg.timestamp,
+                "isStreaming" to msg.isStreaming,
+                "generatedImageBase64" to if (msg.generatedImageBase64.isNotBlank()) "[base64 image]" else ""
+            )
+        }
+        return org.json.JSONObject(map).toString(2)
+    }
+
+    enum class ExportFormat { TXT, JSON }
 }

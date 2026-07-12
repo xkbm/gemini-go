@@ -11,6 +11,7 @@
     <string name="action_delete">Eliminar</string>
     <string name="action_share">Compartir</string>
     <string name="action_attach">Adjuntar imagen</string>
+    <string name="action_mic">Dictar mensaje</string>
     <string name="action_custom_model">Personalizado…</string>
     <string name="title_conversations">Tus conversaciones</string>
     <string name="title_settings">Ajustes</string>

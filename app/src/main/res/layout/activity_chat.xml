@@ -75,6 +75,12 @@
                 android:inputType="textMultiLine|textCapSentences" android:maxLines="5" android:minHeight="48dp"
                 android:paddingStart="16dp" android:paddingEnd="16dp"
                 android:textColor="@android:color/white" android:textColorHint="#808080" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnMic"
+                android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="bottom"
+                android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_send_button" android:contentDescription="@string/action_mic"
+                app:backgroundTint="@null" app:icon="@drawable/ic_mic" app:iconGravity="textStart" app:iconPadding="0dp"
+                app:iconTint="@android:color/white" />
             <com.google.android.material.button.MaterialButton android:id="@+id/btnSend"
                 android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="bottom"
                 android:background="@drawable/bg_send_button" android:contentDescription="@string/action_send"

@@ -1,6 +1,12 @@
 package com.gemini.go.ui.chat
 
 import android.app.Application
+import android.content.Context
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -14,11 +20,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
-class ChatViewModel(app: Application) : AndroidViewModel(app) {
+class ChatViewModel(app: Application) : AndroidViewModel(app), TextToSpeech.OnInitListener {
     private val repo = (app as GeminiApp).repository
     private val prefs = (app as GeminiApp).prefs
     private val _messages = MutableLiveData<List<MessageUiModel>>(emptyList())
@@ -34,6 +40,21 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingImageGen = false
     val hasApiKey: Boolean get() = prefs.apiKey.isNotBlank()
     val currentModel: GeminiModel get() = prefs.model
+
+    // TTS
+    private var tts: TextToSpeech? = null
+    private var isSpeaking = false
+
+    // STT
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
+    private var sttResultCallback: ((String) -> Unit)? = null
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.language = Locale.getDefault()
+        }
+    }
 
     fun loadOrCreateConversation(conversationId: String?) {
         viewModelScope.launch {
@@ -204,6 +225,69 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // MARK: - TextToSpeech
+    fun speak(text: String) {
+        stopSpeaking()
+        tts = TextToSpeech(getApplication(), this)
+        isSpeaking = true
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_${System.currentTimeMillis()}")
+    }
+
+    fun stopSpeaking() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        isSpeaking = false
+    }
+
+    val isTtsSpeaking: Boolean get() = isSpeaking
+
+    // MARK: - SpeechRecognizer (STT)
+    fun startListening(onResult: (String) -> Unit) {
+        if (isListening) return
+        sttResultCallback = onResult
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getApplication())
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { isListening = true }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) {
+                isListening = false
+                sttResultCallback?.invoke("") // error silencioso
+                sttResultCallback = null
+            }
+            override fun onResults(results: Bundle) {
+                isListening = false
+                val matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                matches?.firstOrNull()?.let { sttResultCallback?.invoke(it) }
+                sttResultCallback = null
+            }
+            override fun onPartialResults(partialResults: Bundle) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla ahora…")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        speechRecognizer?.startListening(intent)
+        isListening = true
+    }
+
+    fun cancelListening() {
+        speechRecognizer?.cancel()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        isListening = false
+        sttResultCallback = null
+    }
+
+    val isSttListening: Boolean get() = isListening
+
     fun stopGenerating() {
         streamJob?.cancel(); _isGenerating.value = false
         val current = _messages.value.orEmpty()
@@ -211,5 +295,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun errorShown() { _error.value = null }
     fun startNewChat() { messagesObserverJob?.cancel(); streamJob?.cancel(); _isGenerating.value = false; _currentConversation.value = null; _messages.value = emptyList() }
-    override fun onCleared() { super.onCleared(); streamJob?.cancel(); messagesObserverJob?.cancel() }
+    override fun onCleared() {
+        super.onCleared()
+        streamJob?.cancel()
+        messagesObserverJob?.cancel()
+        stopSpeaking()
+        cancelListening()
+    }
 }
