@@ -104,7 +104,7 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                 "gemini-3-pro-image",
                 "gemini-2.5-flash-image"
             )
-            var lastError = "Error desconocido"
+            val errors = mutableListOf<String>()
             for (model in models) {
                 try {
                     val url = "https://generativelanguage.googleapis.com/v1beta/interactions"
@@ -126,7 +126,7 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                             val b64 = outputImage.get("data")?.asString
                             if (!b64.isNullOrBlank()) return@withContext b64
                         }
-                        // Fallback: buscar image en steps/output
+                        // Fallback: buscar image en output.data
                         val output = parsed.getAsJsonObject("output")
                         if (output != null) {
                             val b64 = output.get("data")?.asString
@@ -150,24 +150,21 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                                 }
                             }
                         }
-                        lastError = "El modelo '$model' no devolvió una imagen (resp: ${body.take(150)})"
+                        errors.add("$model: sin imagen (resp: ${body.take(100)})")
                     } else {
                         val errMsg = try {
                             com.google.gson.JsonParser.parseString(body).asJsonObject
                                 .getAsJsonObject("error")?.get("message")?.asString
                         } catch (_: Exception) { null }
-                        // Si es 429 (quota), probar siguiente modelo; si es 404, el modelo no existe
-                        lastError = "HTTP ${response.code}: ${errMsg ?: response.message}"
-                        // Si es 404 el modelo no existe — seguir al siguiente
-                        // Si es 429 quota de este modelo — seguir al siguiente
-                        // Si es 400 (prompt bloqueado) — no seguir
+                        errors.add("$model: HTTP ${response.code} ${errMsg ?: response.message}")
+                        // Si es 400 (prompt bloqueado), no tiene sentido probar otro modelo
                         if (response.code == 400) break
                     }
                 } catch (e: Exception) {
-                    lastError = "${e.javaClass.simpleName}: ${e.message ?: "Excepción"}"
+                    errors.add("$model: ${e.javaClass.simpleName}: ${e.message ?: "Excepción"}")
                 }
             }
-            "ERROR:$lastError"
+            "ERROR:Todos los modelos fallaron:\n${errors.joinToString("\n")}"
         }
     }
 }
