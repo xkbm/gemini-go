@@ -95,60 +95,37 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
      */
     suspend fun generateImage(prompt: String): String? {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            // Interactions API — modelos Nano Banana 2 con tier gratis (julio 2026).
-            // Docs: https://ai.google.dev/gemini-api/docs/interactions/image-generation
-            // Se prueban en orden: Lite (mas rapido/barato) -> Flash -> Pro -> legacy 2.5
+            // Modelos Imagen 4 — los unicos con tier gratis (25 RPD segun Google AI Studio).
+            // Endpoint :predict (no :generateContent ni Interactions API).
+            // Docs: https://ai.google.dev/gemini-api/docs/imagen
             val models = listOf(
-                "gemini-3.1-flash-lite-image",
-                "gemini-3.1-flash-image",
-                "gemini-3-pro-image",
-                "gemini-2.5-flash-image"
+                "imagen-4.0-fast-generate-001",
+                "imagen-4.0-generate-001",
+                "imagen-4.0-ultra-generate-001"
             )
             val errors = mutableListOf<String>()
             for (model in models) {
                 try {
-                    val url = "https://generativelanguage.googleapis.com/v1beta/interactions"
+                    val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:predict?key=$apiKey"
                     val json = gson.toJson(mapOf(
-                        "model" to model,
-                        "input" to listOf(mapOf("type" to "text", "text" to prompt))
+                        "instances" to listOf(mapOf("prompt" to prompt)),
+                        "parameters" to mapOf(
+                            "sampleCount" to 1
+                        )
                     ))
                     val req = Request.Builder().url(url)
                         .post(json.toRequestBody("application/json".toMediaType()))
-                        .addHeader("x-goog-api-key", apiKey)
                         .build()
                     val response = httpClient.newCall(req).execute()
                     val body = response.body?.string() ?: ""
                     if (response.isSuccessful) {
                         val parsed = com.google.gson.JsonParser.parseString(body).asJsonObject
-                        // Interactions API: interaction.output_image.data (base64)
-                        val outputImage = parsed.getAsJsonObject("output_image")
-                        if (outputImage != null) {
-                            val b64 = outputImage.get("data")?.asString
+                        // Respuesta: {predictions: [{bytesBase64Encoded: "..."}]}
+                        val predictions = parsed.getAsJsonArray("predictions")
+                        if (predictions != null && predictions.size() > 0) {
+                            val prediction = predictions[0].asJsonObject
+                            val b64 = prediction.get("bytesBase64Encoded")?.asString
                             if (!b64.isNullOrBlank()) return@withContext b64
-                        }
-                        // Fallback: buscar image en output.data
-                        val output = parsed.getAsJsonObject("output")
-                        if (output != null) {
-                            val b64 = output.get("data")?.asString
-                            if (!b64.isNullOrBlank()) return@withContext b64
-                        }
-                        // Fallback: buscar en steps[].content[].image
-                        val steps = parsed.getAsJsonArray("steps")
-                        if (steps != null) {
-                            for (i in 0 until steps.size()) {
-                                val step = steps[i].asJsonObject
-                                val content = step.getAsJsonArray("content")
-                                if (content != null) {
-                                    for (j in 0 until content.size()) {
-                                        val block = content[j].asJsonObject
-                                        val image = block.getAsJsonObject("image")
-                                        if (image != null) {
-                                            val b64 = image.get("data")?.asString
-                                            if (!b64.isNullOrBlank()) return@withContext b64
-                                        }
-                                    }
-                                }
-                            }
                         }
                         errors.add("$model: sin imagen (resp: ${body.take(100)})")
                     } else {
@@ -156,8 +133,7 @@ class GeminiClient(private val apiKey: String, private val httpClient: OkHttpCli
                             com.google.gson.JsonParser.parseString(body).asJsonObject
                                 .getAsJsonObject("error")?.get("message")?.asString
                         } catch (_: Exception) { null }
-                        errors.add("$model: HTTP ${response.code} ${errMsg ?: response.message}")
-                        // Si es 400 (prompt bloqueado), no tiene sentido probar otro modelo
+                        errors.add("$model: HTTP ${response.code}: ${errMsg ?: response.message}")
                         if (response.code == 400) break
                     }
                 } catch (e: Exception) {
